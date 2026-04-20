@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Car Out Math Game</title>
+<style>
+  *, *::before, *::after { 
+    box-sizing: border-box; 
+    margin: 0; 
+    padding: 0; 
+    /* Prevent blue tap highlights on mobile */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface2: #f0f1f4;
+    --border: rgba(0,0,0,0.13);
+    --border2: rgba(0,0,0,0.22);
+    --text: #1a1a1a;
+    --text2: #555;
+    --text3: #888;
+    --green: #3B6D11;
+    --green-dark: #27500A;
+    --blue: #185FA5;
+    --blue-dark: #0C447C;
+    --red: #A32D2D;
+    --amber: #BA7517;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 16px;
+    overflow-x: hidden;
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior-y: none;
+  }
+
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; text-align: center; }
+  .subtitle { font-size: 14px; color: var(--text3); margin-bottom: 24px; text-align: center; }
+
+  /* --- Responsive Layout --- */
+  #app {
+    width: 100%;
+    max-width: 1000px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  @media (min-width: 800px) {
+    #app { flex-direction: row; align-items: flex-start; justify-content: center; }
+    .left-panel { flex: 0 0 320px; position: sticky; top: 30px; }
+    .right-panel { flex: 1; display: flex; justify-content: center; }
+  }
+
+  /* --- Control Panels --- */
+  .panel {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+
+  .ctrl-row { display: flex; flex-direction: column; gap: 8px; }
+  .ctrl-label { font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px;}
+  .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  button {
+    font-size: 13px; font-family: inherit; font-weight: 500;
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 0.5px solid var(--border2); background: var(--surface);
+    color: var(--text); cursor: pointer; transition: all 0.15s ease;
+    /* Instant taps */
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button:hover { background: var(--surface2); }
+  button:active { transform: scale(0.97); }
+  button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .fam-btn { padding: 5px 10px; min-width: 38px; text-align: center; }
+
+  #gen-btn {
+    width: 100%; background: var(--green); color: #fff; border-color: var(--green);
+    font-weight: 700; font-size: 15px; padding: 10px; margin-top: 16px;
+    box-shadow: 0 2px 6px rgba(59, 109, 17, 0.3);
+  }
+  #gen-btn:hover { background: var(--green-dark); }
+
+  /* --- Stats Bar --- */
+  #stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .stat-chip {
+    font-size: 12px; padding: 8px 12px; border-radius: var(--radius-sm);
+    background: var(--surface2); color: var(--text2); display: flex;
+    flex-direction: column; align-items: center; border: 0.5px solid var(--border);
+  }
+  .stat-chip span { font-weight: 700; color: var(--text); font-size: 16px; margin-top: 2px;}
+  .stat-chip.time-chip { grid-column: span 2; background: #e8f0fe; border-color: #cce0ff; color: var(--blue-dark); }
+  .stat-chip.time-chip span { color: var(--blue); }
+
+  /* --- Parking Lot --- */
+  #lot-wrap {
+    position: relative; background: #d6dbe6; border-radius: var(--radius);
+    border: 6px solid #5a6070; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    /* Prevent page scroll when swiping on the board */
+    touch-action: none;
+  }
+  #lot-asphalt { position: absolute; inset: 0; background: #3a3f4b; opacity: 0.95; }
+  .parking-spot { position: absolute; border: 2px solid rgba(255,255,255,0.08); border-radius: 4px; pointer-events: none; }
+
+  /* --- Objects --- */
+  .car, .obstacle {
+    position: absolute; border-radius: 8px; cursor: pointer; z-index: 5;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.2);
+    transform: var(--rot); transform-origin: center center; transition: filter 0.2s;
+    /* Touch optimizations */
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .car { width: 54px; height: 84px; }
+  @media (hover: hover) {
+    .car:hover, .obstacle:hover { filter: brightness(1.2); }
+  }
+  
+  .obstacle {
+    width: 76px; height: 76px; background: #E6C229 !important; border: 4px dashed #333;
+    display: flex; align-items: center; justify-content: center; font-size: 40px; line-height: 1;
+  }
+  
+  .pedestrian {
+    position: absolute; font-size: 28px; z-index: 8; user-select: none;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4)); 
+    transition: top 0.4s ease, left 0.4s ease, transform 0.2s ease;
+  }
+  .worker { position: absolute; font-size: 36px; z-index: 12; user-select: none; }
+
+  /* Car pure CSS details */
+  .car-roof { position: absolute; top: 18%; left: 8%; right: 8%; bottom: 18%; background: inherit; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); box-shadow: inset 0 0 15px rgba(0,0,0,0.4); }
+  .car-window { position: absolute; top: 22%; left: 12%; right: 12%; height: 18%; background: #111; border-radius: 4px 4px 0 0; }
+  .car-window-rear { position: absolute; bottom: 22%; left: 16%; right: 16%; height: 12%; background: #111; border-radius: 0 0 4px 4px; }
+  .car-headlights { position: absolute; top: 2px; left: 10%; right: 10%; height: 6px; display: flex; justify-content: space-between; }
+  .car-light { width: 12px; height: 100%; background: #fffcee; border-radius: 2px; box-shadow: 0 0 4px #fffcee; }
+  .car-taillights { position: absolute; bottom: 2px; left: 10%; right: 10%; height: 4px; display: flex; justify-content: space-between; }
+  .car-taillight { width: 14px; height: 100%; background: #ff3333; border-radius: 2px; }
+
+  .car.selected, .obstacle.selected { box-shadow: 0 0 0 4px #EF9F27, 0 8px 16px rgba(0,0,0,0.5); z-index: 6; }
+
+  /* Animations */
+  @keyframes stall {
+    0% { transform: var(--rot) translateX(0); }
+    20% { transform: var(--rot) translateX(-4px); }
+    40% { transform: var(--rot) translateX(4px); }
+    60% { transform: var(--rot) translateX(-4px); }
+    80% { transform: var(--rot) translateX(4px); }
+    100% { transform: var(--rot) translateX(0); }
+  }
+  .car.stall, .obstacle.stall { animation: stall 0.4s ease; }
+  
+  @keyframes jackhammer {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-4px) rotate(-5deg); }
+    75% { transform: translateY(2px) rotate(5deg); }
+  }
+  .worker.active { animation: jackhammer 0.1s infinite; }
+
+  /* --- Math Modal Overlay --- */
+  #modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(3px); z-index: 50; align-items: center; justify-content: center;
+  }
+  #modal-overlay.show { display: flex; }
+
+  #qa-panel {
+    background: var(--surface); border-radius: var(--radius); padding: 32px;
+    text-align: center; width: 90%; max-width: 400px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+  #modal-title { font-size: 14px; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: 1px; margin-bottom: -10px; }
+  #question-text { font-size: 32px; font-weight: 800; color: var(--text); }
+  #answer-row { display: flex; gap: 8px; justify-content: center; align-items: center; width: 100%; }
+  #ans-input { font-size: 24px; font-family: inherit; font-weight: 600; width: 110px; text-align: center; padding: 10px; border-radius: var(--radius-sm); border: 2px solid var(--border2); outline: none; }
+  #ans-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24, 95, 165, 0.2); }
+  #submit-btn { font-size: 18px; font-weight: 700; padding: 12px 24px; background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); }
+  #submit-btn:hover { background: var(--blue-dark); }
+  #cancel-link { font-size: 13px; color: var(--text3); text-decoration: underline; cursor: pointer; margin-top: 8px; touch-action: manipulation; }
+  
+  #feedback { font-size: 15px; font-weight: 600; min-height: 22px; }
+  #feedback.correct { color: var(--green); }
+  #feedback.wrong { color: var(--red); }
+
+  /* --- Screen Overlays (Win/Loss) --- */
+  #end-screen {
+    display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(4px); z-index: 20; align-items: center; justify-content: center;
+  }
+  #end-screen.show { display: flex; }
+  #end-inner {
+    background: var(--surface); border-radius: var(--radius); padding: 32px;
+    text-align: center; max-width: 340px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  }
+  #end-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+  #end-msg { font-size: 14px; color: var(--text2); margin-bottom: 20px; line-height: 1.4; }
+  .end-btn { font-size: 16px; font-weight: 700; padding: 12px 32px; width: 100%; border: none; border-radius: var(--radius-sm); color: #fff; cursor: pointer; touch-action: manipulation;}
+  
+  .divider { width: 100%; height: 1px; background: var(--border); margin: 16px 0; }
+  #toast { position: fixed; bottom: -50px; left: 50%; transform: translateX(-50%); background: var(--red); color: white; padding: 10px 20px; border-radius: 20px; font-weight: 600; font-size: 14px; transition: bottom 0.3s ease; z-index: 100; pointer-events: none; }
+  #toast.show { bottom: 30px; }
+</style>
+</head>
+<body>
+
+<h1>🚗 Car Out Math Game</h1>
+<p class="subtitle">Clear barricades, dodge pedestrians, and solve math to escape the jam!</p>
+
+<div id="app">
+  <div class="left-panel">
+    <div class="panel">
+      <div class="ctrl-row">
+        <span class="ctrl-label">DIFFICULTY</span>
+        <div class="btn-group">
+          <button class="diff-btn" data-diff="easy" data-cars="5">🟢 Easy</button>
+          <button class="diff-btn active" data-diff="medium" data-cars="15">🟡 Medium</button>
+          <button class="diff-btn" data-diff="hard" data-cars="30">🔴 Hard</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">OPERATION</span>
+        <div class="btn-group">
+          <button class="op-btn active" data-op="addition">＋ Add</button>
+          <button class="op-btn" data-op="subtraction">－ Subtract</button>
+          <button class="op-btn" data-op="multiplication">✕ Multiply</button>
+          <button class="op-btn" data-op="division">÷ Divide</button>
+          <button class="op-btn" data-op="mixed">🎲 Mixed</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">FACT FAMILY</span>
+        <div class="btn-group">
+          <button class="fam-btn active" data-fam="0">All</button>
+          <button class="fam-btn" data-fam="1">1s</button>
+          <button class="fam-btn" data-fam="2">2s</button>
+          <button class="fam-btn" data-fam="3">3s</button>
+          <button class="fam-btn" data-fam="4">4s</button>
+          <button class="fam-btn" data-fam="5">5s</button>
+          <button class="fam-btn" data-fam="6">6s</button>
+          <button class="fam-btn" data-fam="7">7s</button>
+          <button class="fam-btn" data-fam="8">8s</button>
+          <button class="fam-btn" data-fam="9">9s</button>
+          <button class="fam-btn" data-fam="10">10s</button>
+        </div>
+      </div>
+      <button id="gen-btn">🔀 Generate New Board</button>
+
+      <div id="stats-grid">
+        <div class="stat-chip time-chip">Time <span id="s-time">0:00</span></div>
+        <div class="stat-chip">Total <span id="s-total">0</span></div>
+        <div class="stat-chip">Score <span id="s-pct">—</span></div>
+        <div class="stat-chip">Correct <span id="s-correct" style="color:var(--green)">0</span></div>
+        <div class="stat-chip">Wrong <span id="s-wrong" style="color:var(--red)">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div id="lot-wrap">
+      <div id="lot-asphalt"></div>
+      <div id="spots-layer"></div>
+      <div id="cars-layer"></div>
+      
+      <div id="end-screen">
+        <div id="end-inner">
+          <h3 id="end-title">🎉 Lot Cleared!</h3>
+          <p id="end-msg">Great job!</p>
+          <button id="end-btn" class="end-btn" style="background: var(--green);">Play Again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-overlay">
+  <div id="qa-panel">
+    <div id="modal-title">Solve to drive out!</div>
+    <div id="question-text">5 + 5 = ?</div>
+    <div id="answer-row">
+      <input type="number" id="ans-input" placeholder="?" autocomplete="off" min="0" max="200">
+      <button id="submit-btn">Go! ➜</button>
+    </div>
+    <div id="feedback"></div>
+    <div id="cancel-link">Cancel</div>
+  </div>
+</div>
+
+<div id="toast">That object is blocked! Move cars first.</div>
+
+<script>
+// ---- Game Constants & State ----
+const CELL = 96, PAD = 10;
+let COLS = 6, ROWS = 6;
+const CAR_COLORS = ['#378ADD','#D4537E','#1D9E75','#D85A30','#7F77DD','#BA7517','#639922','#993556','#0F6E56','#185FA5', '#E6C229', '#8C271E'];
+const DIRS = [
+  { id: 'up', dr: -1, dc: 0, rot: 0 },
+  { id: 'right', dr: 0, dc: 1, rot: 90 },
+  { id: 'down', dr: 1, dc: 0, rot: 180 },
+  { id: 'left', dr: 0, dc: -1, rot: 270 }
+];
+
+let currentOp = 'addition', currentFamily = 0, currentDifficulty = 15;
+let cars = [], exitingCars = [], pedestrians = [];
+let activeItem = null;
+let currentQ = null, stats = { total: 0, correct: 0, wrong: 0 };
+let timerInterval = null, pedMoveInterval = null, secondsElapsed = 0;
+let animationId = null, isPaused = false;
+let questionContext = { type: null, target: null }; 
+
+// ---- Elements ----
+const lotWrap = document.getElementById('lot-wrap'), spotsLayer = document.getElementById('spots-layer'), carsLayer = document.getElementById('cars-layer');
+const sTime = document.getElementById('s-time'), endScreen = document.getElementById('end-screen'), endTitle = document.getElementById('end-title'), endMsg = document.getElementById('end-msg'), endBtn = document.getElementById('end-btn');
+const modalOverlay = document.getElementById('modal-overlay'), modalTitle = document.getElementById('modal-title'), qText = document.getElementById('question-text'), ansInput = document.getElementById('ans-input'), feedback = document.getElementById('feedback'), toast = document.getElementById('toast');
+
+// ---- Math Helpers ----
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function showToast(msg) { toast.textContent = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500); }
+
+function genQuestion() {
+  const ops = ['addition','subtraction','multiplication','division'];
+  const eff = currentOp === 'mixed' ? ops[randInt(0, 3)] : currentOp;
+  const fam = currentFamily;
+  let a, b, ans, q;
+
+  if (eff === 'addition') { a = fam ? fam : randInt(0, 10); b = randInt(0, 10); if (a>10) a=10; if (b>10) b=10; ans = a + b; q = `${a} + ${b} = ?`; }
+  else if (eff === 'subtraction') { a = fam ? fam + randInt(0, 10) : randInt(0, 20); b = randInt(0, 10); if (b > a) b = a; ans = a - b; q = `${a} − ${b} = ?`; }
+  else if (eff === 'multiplication') { a = fam ? fam : randInt(0, 10); b = randInt(0, 10); if (a>10) a=10; if (b>10) b=10; ans = a * b; q = `${a} × ${b} = ?`; }
+  else { b = fam ? fam : randInt(1, 10); if (b === 0) b = 1; a = b * randInt(0, 10); ans = a / b; q = `${a} ÷ ${b} = ?`; }
+  return { q, ans, op: eff };
+}
+
+// ---- Setup & Reverse Puzzle Generation ----
+function isPathClearInGrid(r, c, d, grid) {
+  let currR = r + d.dr, currC = c + d.dc;
+  while (currR >= 0 && currR < ROWS && currC >= 0 && currC < COLS) {
+    if (grid[currR][currC]) return false;
+    currR += d.dr; currC += d.dc;
+  }
+  return true;
+}
+
+function generatePuzzle(targetCount) {
+  let grid = Array(ROWS).fill(0).map(() => Array(COLS).fill(false));
+  let puzzleItems = [];
+  
+  for (let i = 0; i < targetCount; i++) {
+    let candidates = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (!grid[r][c]) {
+          for (let d of DIRS) {
+            if (isPathClearInGrid(r, c, d, grid)) candidates.push({ r, c, d });
+          }
+        }
+      }
+    }
+    if (candidates.length === 0) break; 
+    let pick = candidates[randInt(0, candidates.length - 1)];
+    grid[pick.r][pick.c] = true;
+    
+    puzzleItems.push({
+      id: i, row: pick.r, col: pick.c, dir: pick.d.id, rot: pick.d.rot,
+      color: CAR_COLORS[i % CAR_COLORS.length], type: 'car', removed: false
+    });
+  }
+  return puzzleItems;
+}
+
+// ---- Elements Generation ----
+function createEl(item) {
+  const el = document.createElement('div');
+  el.className = item.type; 
+  
+  let padX = item.type === 'car' ? (CELL - 54) / 2 : (CELL - 76) / 2;
+  let padY = item.type === 'car' ? (CELL - 84) / 2 : (CELL - 76) / 2;
+  
+  el.style.left = (PAD + item.col * CELL + padX) + 'px';
+  el.style.top  = (PAD + item.row * CELL + padY) + 'px';
+  el.style.setProperty('--rot', `rotate(${item.rot}deg)`);
+  
+  if(item.type === 'car') {
+    el.style.backgroundColor = item.color;
+    el.innerHTML = `<div class="car-roof"></div><div class="car-window"></div><div class="car-window-rear"></div><div class="car-headlights"><div class="car-light"></div><div class="car-light"></div></div><div class="car-taillights"><div class="car-taillight"></div><div class="car-taillight"></div></div>`;
+  } else {
+    el.innerHTML = '🚧';
+  }
+  
+  el.addEventListener('click', () => selectItem(item.id));
+  carsLayer.appendChild(el);
+  return el;
+}
+
+function spawnPedestrians(count) {
+  let emptySpots = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (!cars.some(car => !car.removed && car.row === r && car.col === c)) {
+        emptySpots.push({r, c});
+      }
+    }
+  }
+  emptySpots = shuffle(emptySpots);
+  
+  for(let i=0; i<count && i<emptySpots.length; i++) {
+    let spot = emptySpots[i];
+    let el = document.createElement('div');
+    el.className = 'pedestrian';
+    el.innerText = '🚶';
+    el.style.left = (PAD + spot.c * CELL + (CELL - 28)/2) + 'px';
+    el.style.top = (PAD + spot.r * CELL + (CELL - 28)/2) + 'px';
+    carsLayer.appendChild(el);
+    pedestrians.push({
+      id: i, row: spot.r, col: spot.c, el: el, active: true, dodging: false
+    });
+  }
+}
+
+// ---- Pedestrian Grid Movement ----
+function movePedestrians() {
+  if (isPaused) return; 
+  
+  let claimedSpots = []; 
+
+  pedestrians.forEach(p => {
+    if (!p.active || p.dodging) return; 
+    
+    let moves = [];
+    DIRS.forEach(d => {
+      let nr = p.row + d.dr;
+      let nc = p.col + d.dc;
+      
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        let hasCar = cars.some(c => !c.removed && c.row === nr && c.col === nc);
+        let isClaimed = claimedSpots.some(s => s.r === nr && s.c === nc);
+        let hasPed = pedestrians.some(other => other.active && other.id !== p.id && other.row === nr && other.col === nc);
+        
+        if (!hasCar && !isClaimed && !hasPed) {
+          moves.push({r: nr, c: nc, dr: d.dr, dc: d.dc});
+        }
+      }
+    });
+
+    if (moves.length > 0) {
+      let move = moves[randInt(0, moves.length - 1)];
+      p.row = move.r;
+      p.col = move.c;
+      claimedSpots.push({r: p.row, c: p.col});
+      
+      p.el.style.left = (PAD + p.col * CELL + (CELL - 28)/2) + 'px';
+      p.el.style.top = (PAD + p.row * CELL + (CELL - 28)/2) + 'px';
+      
+      if (move.dc !== 0) {
+        p.el.style.transform = `scaleX(${move.dc > 0 ? -1 : 1})`;
+      }
+    } else {
+      claimedSpots.push({r: p.row, c: p.col}); 
+    }
+  });
+}
+
+// ---- Interaction & Gameplay ----
+function isPathClearOfObjects(item) {
+  let d = DIRS.find(x => x.id === item.dir);
+  let currR = item.row + d.dr, currC = item.col + d.dc;
+  while (currR >= 0 && currR < ROWS && currC >= 0 && currC < COLS) {
+    if (cars.some(c => !c.removed && c.row === currR && c.col === currC)) return false; 
+    currR += d.dr; currC += d.dc;
+  }
+  return true; 
+}
+
+function selectItem(id) {
+  if(isPaused) return;
+  const item = cars.find(c => c.id === id);
+  if (!item || item.removed) return;
+
+  if (item.type === 'car' && !isPathClearOfObjects(item)) {
+    showToast('🚗 That car is blocked! Move others first.');
+    return;
+  }
+
+  if (activeItem !== null && activeItem !== id) {
+    const prev = cars.find(c => c.id === activeItem);
+    if (prev && prev.el) prev.el.classList.remove('selected');
+  }
+
+  activeItem = id;
+  item.el.classList.add('selected');
+  currentQ = genQuestion();
+  qText.textContent = currentQ.q;
+  ansInput.value = '';
+  
+  questionContext = { type: item.type, target: item };
+  modalTitle.textContent = item.type === 'car' ? 'Solve to drive out!' : 'Solve to clear barricade!';
+  modalTitle.style.color = item.type === 'car' ? 'var(--blue)' : 'var(--amber)';
+  
+  isPaused = true; 
+  modalOverlay.classList.add('show');
+  ansInput.focus();
+}
+
+function submitAnswer() {
+  const val = parseInt(ansInput.value, 10);
+  if (isNaN(val)) return ansInput.focus();
+  stats.total++;
+
+  if (val === currentQ.ans) {
+    stats.correct++;
+    closePopup(); 
+    if (questionContext.type === 'car') beginCarExit(questionContext.target);
+    else if (questionContext.type === 'obstacle') clearObstacle(questionContext.target);
+    else if (questionContext.type === 'pedestrian') dodgePedestrian(questionContext.target);
+  } else {
+    stats.wrong++;
+    if (questionContext.type === 'car') {
+      questionContext.target.el.classList.add('stall');
+      setTimeout(() => questionContext.target.el.classList.remove('stall'), 400);
+      ansInput.value = ''; ansInput.focus();
+    } else if (questionContext.type === 'obstacle') {
+      closePopup(); crashIntoObstacle(questionContext.target);
+    } else if (questionContext.type === 'pedestrian') {
+      closePopup(); crashIntoPedestrian(questionContext.target);
+    }
+  }
+  updateStats();
+}
+
+function closePopup() {
+  if (activeItem !== null) {
+    const item = cars.find(c => c.id === activeItem);
+    if (item && item.el) item.el.classList.remove('selected');
+    activeItem = null;
+  }
+  modalOverlay.classList.remove('show');
+  isPaused = false; 
+}
+
+// ---- Dynamic Events & Animations ----
+function beginCarExit(car) {
+  car.el.classList.remove('selected');
+  car.el.style.zIndex = '10';
+  let d = DIRS.find(x => x.id === car.dir);
+  car.vx = d.dc * 14; 
+  car.vy = d.dr * 14;
+  car.px = PAD + car.col * CELL + ((CELL - 54) / 2);
+  car.py = PAD + car.row * CELL + ((CELL - 84) / 2);
+  car.needsCollisionCheck = currentDifficulty === 30; 
+  exitingCars.push(car);
+  car.removed = true;
+}
+
+function clearObstacle(obs) {
+  obs.removed = true; 
+  let worker = document.createElement('div');
+  worker.className = 'worker active';
+  worker.innerText = '👷‍♂️⛏️';
+  worker.style.left = (PAD + obs.col * CELL + 20) + 'px';
+  worker.style.top = (PAD + obs.row * CELL + 10) + 'px';
+  carsLayer.appendChild(worker);
+  
+  setTimeout(() => {
+    obs.el.innerHTML = '💥';
+    obs.el.style.background = 'transparent';
+    obs.el.style.border = 'none';
+    setTimeout(() => {
+      if (obs.el.parentNode) obs.el.parentNode.removeChild(obs.el);
+      if (worker.parentNode) worker.parentNode.removeChild(worker);
+      checkWin();
+    }, 400);
+  }, 1000);
+}
+
+function crashIntoObstacle(obs) {
+  isPaused = true;
+  let fakeCar = document.createElement('div');
+  fakeCar.innerText = '🚗';
+  fakeCar.style.position = 'absolute';
+  fakeCar.style.fontSize = '50px';
+  fakeCar.style.transition = 'all 0.4s ease-in';
+  fakeCar.style.left = (PAD + obs.col * CELL + 10) + 'px';
+  fakeCar.style.top = '-80px'; 
+  fakeCar.style.zIndex = '20';
+  carsLayer.appendChild(fakeCar);
+  
+  setTimeout(() => {
+    fakeCar.style.top = (PAD + obs.row * CELL) + 'px';
+    setTimeout(() => {
+      fakeCar.innerText = '💥';
+      obs.el.innerHTML = '💥';
+      setTimeout(() => endGame(false, "Crash!", "You failed to clear the barricade and a car crashed!"), 800);
+    }, 400);
+  }, 50);
+}
+
+function triggerPedestrianQuestion(car, ped) {
+  isPaused = true;
+  currentQ = genQuestion();
+  qText.textContent = currentQ.q;
+  ansInput.value = '';
+  questionContext = { type: 'pedestrian', target: { car, ped } };
+  modalTitle.textContent = 'Watch out! Solve to dodge!';
+  modalTitle.style.color = 'var(--red)';
+  document.getElementById('cancel-link').style.display = 'none'; 
+  modalOverlay.classList.add('show');
+  ansInput.focus();
+}
+
+function dodgePedestrian(ctx) {
+  let { car, ped } = ctx;
+  ped.dodging = true; 
+  ped.el.innerText = '😡';
+  
+  let d = DIRS.find(x => x.id === car.dir);
+  if (d.dc === 0) {
+    ped.el.style.transform = `translateX(45px)`;
+  } else {
+    ped.el.style.transform = `translateY(45px)`;
+  }
+  
+  car.needsCollisionCheck = false; 
+  document.getElementById('cancel-link').style.display = 'block'; 
+
+  setTimeout(() => {
+    if (ped.active) {
+      ped.el.innerText = '🚶';
+      ped.el.style.transform = ''; 
+      ped.dodging = false; 
+    }
+  }, 2000);
+}
+
+function crashIntoPedestrian(ctx) {
+  let { ped } = ctx;
+  ped.el.innerText = '😡';
+  document.getElementById('cancel-link').style.display = 'block'; 
+  setTimeout(() => endGame(false, "Accident!", "You hit a pedestrian! Game Over."), 800);
+}
+
+// ---- Core JS Game Loop (For Exiting Cars) ----
+function gameLoop() {
+  if (!isPaused) {
+    const W = COLS * CELL + PAD * 2;
+    const H = ROWS * CELL + PAD * 2;
+
+    for (let i = exitingCars.length - 1; i >= 0; i--) {
+      let c = exitingCars[i];
+      c.px += c.vx; c.py += c.vy;
+      c.el.style.left = c.px + 'px';
+      c.el.style.top = c.py + 'px';
+
+      if (c.needsCollisionCheck) {
+        let cLeft = c.px, cRight = c.px + 54, cTop = c.py, cBottom = c.py + 84;
+        
+        pedestrians.forEach(p => {
+          if(!p.active) return;
+          let px = PAD + p.col * CELL + (CELL - 28)/2;
+          let py = PAD + p.row * CELL + (CELL - 28)/2;
+          let pLeft = px, pRight = px + 28, pTop = py, pBottom = py + 28;
+          
+          if (cLeft < pRight && cRight > pLeft && cTop < pBottom && cBottom > pTop) {
+             triggerPedestrianQuestion(c, p);
+          }
+        });
+      }
+
+      if (c.px < -150 || c.px > W+150 || c.py < -150 || c.py > H+150) {
+        if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+        exitingCars.splice(i, 1);
+        checkWin();
+      }
+    }
+  }
+  animationId = requestAnimationFrame(gameLoop);
+}
+
+// ---- Win/Loss State ----
+function updateStats() {
+  document.getElementById('s-total').textContent = stats.total;
+  document.getElementById('s-correct').textContent = stats.correct;
+  document.getElementById('s-wrong').textContent = stats.wrong;
+  document.getElementById('s-pct').textContent = stats.total ? Math.round(stats.correct / stats.total * 100) + '%' : '—';
+}
+
+function checkWin() {
+  if (cars.every(c => c.removed) && exitingCars.length === 0) {
+    endGame(true, "🎉 Lot Cleared!", "Great job! You cleared the traffic jam.");
+  }
+}
+
+function endGame(isWin, title, msg) {
+  stopTimer();
+  isPaused = true;
+  endTitle.textContent = title;
+  endTitle.style.color = isWin ? 'var(--green)' : 'var(--red)';
+  endMsg.textContent = msg;
+  endBtn.style.background = isWin ? 'var(--green)' : 'var(--red)';
+  endScreen.classList.add('show');
+}
+
+// ---- Main Game Generator ----
+function generate() {
+  endScreen.classList.remove('show');
+  closePopup();
+  if(animationId) cancelAnimationFrame(animationId);
+  if(pedMoveInterval) clearInterval(pedMoveInterval);
+  
+  if(currentDifficulty === 5) { COLS = 5; ROWS = 5; }
+  else if(currentDifficulty === 15) { COLS = 6; ROWS = 6; }
+  else { COLS = 7; ROWS = 7; } 
+  
+  carsLayer.innerHTML = ''; spotsLayer.innerHTML = '';
+  activeItem = null; exitingCars = []; pedestrians = []; isPaused = false;
+  stats = { total: 0, correct: 0, wrong: 0 };
+  updateStats();
+  
+  const W = COLS * CELL + PAD * 2; const H = ROWS * CELL + PAD * 2;
+  lotWrap.style.width = W + 'px'; lotWrap.style.height = H + 'px';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const spot = document.createElement('div');
+      spot.className = 'parking-spot';
+      spot.style.left = (PAD + c * CELL + 2) + 'px'; spot.style.top = (PAD + r * CELL + 2) + 'px';
+      spot.style.width = (CELL - 4) + 'px'; spot.style.height = (CELL - 4) + 'px';
+      spotsLayer.appendChild(spot);
+    }
+  }
+
+  cars = generatePuzzle(currentDifficulty);
+  
+  let numObs = currentDifficulty === 15 ? 2 : (currentDifficulty === 30 ? 4 : 0);
+  let candidates = shuffle([...cars]);
+  for(let i=0; i<numObs && i<candidates.length; i++) candidates[i].type = 'obstacle';
+  
+  cars.forEach(c => { c.el = createEl(c); });
+  
+  if(currentDifficulty === 30) {
+    spawnPedestrians(4);
+    pedMoveInterval = setInterval(movePedestrians, 1200); 
+  }
+
+  startTimer();
+  gameLoop();
+}
+
+// ---- Timing & Listeners ----
+function updateTimerDisplay() {
+  sTime.textContent = `${Math.floor(secondsElapsed / 60)}:${(secondsElapsed % 60).toString().padStart(2, '0')}`;
+}
+function startTimer() { stopTimer(); secondsElapsed = 0; updateTimerDisplay(); timerInterval = setInterval(() => { secondsElapsed++; updateTimerDisplay(); }, 1000); }
+function stopTimer() { if (timerInterval) clearInterval(timerInterval); }
+
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => { document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentDifficulty = parseInt(btn.dataset.cars, 10); });
+});
+document.querySelectorAll('.op-btn').forEach(btn => {
+  btn.addEventListener('click', () => { document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentOp = btn.dataset.op; });
+});
+document.querySelectorAll('.fam-btn').forEach(btn => {
+  btn.addEventListener('click', () => { document.querySelectorAll('.fam-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentFamily = parseInt(btn.dataset.fam); });
+});
+document.getElementById('gen-btn').addEventListener('click', generate);
+document.getElementById('submit-btn').addEventListener('click', submitAnswer);
+document.getElementById('cancel-link').addEventListener('click', () => { if(questionContext.type !== 'pedestrian') closePopup(); });
+document.getElementById('end-btn').addEventListener('click', generate);
+ansInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAnswer(); });
+
+generate();
+</script>
+</body>
+</html>
